@@ -36,10 +36,15 @@
           commonArgs = {
             inherit src;
             strictDeps = true;
-
-            buildInputs = pkgs.lib.optionals pkgs.stdenv.isDarwin [
-              pkgs.libiconv
+            # Build tools needed at compile time (host)
+            nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux [
+              pkgs.pkg-config
             ];
+
+            # Target libraries for linking
+            buildInputs =
+              (pkgs.lib.optionals pkgs.stdenv.isDarwin [ pkgs.libiconv ])
+              ++ (pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.openssl ]);
           };
 
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;

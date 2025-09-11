@@ -5,7 +5,9 @@ use libbm::{cli::Cli, entry::Entry, tag::Tag};
 
 pub const DEFAULT_DATA_DIR: &str = "~/.local/share/bm";
 
-fn main() {
+fn main() -> color_eyre::Result<()> {
+    color_eyre::install()?;
+
     let cli = Cli::parse();
     // Where we store our data
     let _data_dir = cli
@@ -22,7 +24,7 @@ fn main() {
                 .collect();
             match Entry::new(&url, title, Some(tag_set)) {
                 Ok(entry) => {
-                    dbg!(entry);
+                    println!("{}", serde_json::to_string(&dbg!(entry))?);
                 }
                 Err(e) => {
                     eprintln!("Failed to add entry: {e}");
@@ -30,5 +32,5 @@ fn main() {
             }
         }
     }
-    println!("Hello, world!");
+    Ok(())
 }

@@ -21,6 +21,7 @@ pub struct Entry {
     tags: HashSet<Tag>,
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
+    full_text: String,
 }
 
 #[derive(Debug, Error)]
@@ -39,7 +40,7 @@ impl Entry {
         tags: Option<HashSet<Tag>>,
     ) -> Result<Self, Box<Error>> {
         let tags = tags.unwrap_or_default();
-        let body = AGENT
+        let mut body = AGENT
             .get(url.as_str())
             .call()
             .map_err(|e| Error::FetchError {
@@ -53,6 +54,11 @@ impl Entry {
                 url: url.clone(),
             })?;
         let doc = Html::parse_document(&body);
+        // readability::extractor::extract expects an impl Read; feed it bytes
+        let mut bytes = body.as_bytes();
+        let full_text = readability::extractor::extract(&mut bytes, url)
+            .map(|p| p.content)
+            .unwrap_or_default();
         let page_title = page_title
             .or_else(|| first_text(&doc, "head > title"))
             .or_else(|| first_attr(&doc, r#"head meta[property="og:title"]"#, "content"))
@@ -117,6 +123,7 @@ impl Entry {
             authors,
             tags,
             description,
+            full_text,
         })
     }
 }
