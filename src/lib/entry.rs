@@ -19,9 +19,10 @@ pub struct Entry {
     site_title: String,
     authors: HashSet<String>,
     tags: HashSet<Tag>,
+    full_text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
-    full_text: String,
+    thumbnail: Option<Url>,
 }
 
 #[derive(Debug, Error)]
@@ -40,7 +41,7 @@ impl Entry {
         tags: Option<HashSet<Tag>>,
     ) -> Result<Self, Box<Error>> {
         let tags = tags.unwrap_or_default();
-        let mut body = AGENT
+        let body = AGENT
             .get(url.as_str())
             .call()
             .map_err(|e| Error::FetchError {
@@ -54,7 +55,6 @@ impl Entry {
                 url: url.clone(),
             })?;
         let doc = Html::parse_document(&body);
-        // readability::extractor::extract expects an impl Read; feed it bytes
         let mut bytes = body.as_bytes();
         let full_text = readability::extractor::extract(&mut bytes, url)
             .map(|p| p.content)
@@ -113,6 +113,18 @@ impl Entry {
             .or_else(|| microformats_summary(&doc))
             .or_else(|| dublin_core_description(&doc))
             .or_else(|| manifest_description(url, &doc));
+        let thumbnail = og_image(&url, &doc)
+            .or_else(|| twitter_image(&url, &doc))
+            .or_else(|| schema_primary_image_jsonld(&url, &doc))
+            .or_else(|| schema_primary_image_microdata_rdfa(&url, &doc))
+            .or_else(|| schema_image_jsonld(&url, &doc))
+            .or_else(|| schema_image_microdata_rdfa(&url, &doc))
+            .or_else(|| microformats_image(&url, &doc))
+            .or_else(|| oembed_thumbnail(&url, &doc))
+            .or_else(|| amp_story_poster(&url, &doc))
+            .or_else(|| rel_image_src(&url, &doc))
+            .map(|s| Url::parse(&s).ok())
+            .flatten();
 
         let id = Uuid::new_v4();
         Ok(Entry {
@@ -124,6 +136,7 @@ impl Entry {
             tags,
             description,
             full_text,
+            thumbnail,
         })
     }
 }
@@ -772,4 +785,286 @@ fn collect_schema_descriptions(v: &Value, out: &mut Vec<String>) {
         }
         _ => {}
     }
+}
+
+fn og_image(base: &Url, doc: &Html) -> Option<String> {
+    for css in [
+        r#"head meta[property="og:image:secure_url"]"#, // prefer https when given
+        r#"head meta[property="og:image:url"]"#,
+        r#"head meta[property="og:image"]"#,
+    ] {
+        if let Some(u) = first_attr(doc, css, "content") {
+            if let Some(abs) = absolutise(base, &u) {
+                return Some(abs);
+            }
+        }
+    }
+    None
+}
+
+fn twitter_image(base: &Url, doc: &Html) -> Option<String> {
+    for css in [
+        r#"head meta[name="twitter:image"]"#,
+        r#"head meta[name="twitter:image:src"]"#, // seen in the wild
+    ] {
+        if let Some(u) = first_attr(doc, css, "content") {
+            if let Some(abs) = absolutise(base, &u) {
+                return Some(abs);
+            }
+        }
+    }
+    None
+}
+
+fn schema_primary_image_jsonld(base: &Url, doc: &Html) -> Option<String> {
+    let sel = Selector::parse(r#"script[type="application/ld+json"]"#).ok()?;
+    let mut cands = Vec::<String>::new();
+    for node in doc.select(&sel) {
+        let raw = node.text().collect::<String>();
+        if let Ok(val) = serde_json::from_str::<Value>(&raw) {
+            collect_primary_image(&val, &mut cands); // WebPage.primaryImageOfPage first
+        }
+    }
+    cands
+        .into_iter()
+        .filter_map(|u| absolutise(base, &u))
+        .next()
+}
+
+fn schema_image_jsonld(base: &Url, doc: &Html) -> Option<String> {
+    let sel = Selector::parse(r#"script[type="application/ld+json"]"#).ok()?;
+    let mut cands = Vec::<String>::new();
+    for node in doc.select(&sel) {
+        let raw = node.text().collect::<String>();
+        if let Ok(val) = serde_json::from_str::<Value>(&raw) {
+            collect_generic_image(&val, &mut cands); // CreativeWork.image as fallback
+        }
+    }
+    cands
+        .into_iter()
+        .filter_map(|u| absolutise(base, &u))
+        .next()
+}
+
+fn schema_primary_image_microdata_rdfa(base: &Url, doc: &Html) -> Option<String> {
+    for css in [
+        r#"[itemprop="primaryImageOfPage"]"#,
+        r#"[property="schema:primaryImageOfPage"]"#,
+    ] {
+        if let Some(u) = url_from_any_attr(doc, css) {
+            if let Some(abs) = absolutise(base, &u) {
+                return Some(abs);
+            }
+        }
+    }
+    None
+}
+
+fn schema_image_microdata_rdfa(base: &Url, doc: &Html) -> Option<String> {
+    for css in [r#"[itemprop="image"]"#, r#"[property="schema:image"]"#] {
+        if let Some(u) = url_from_any_attr(doc, css) {
+            if let Some(abs) = absolutise(base, &u) {
+                return Some(abs);
+            }
+        }
+    }
+    None
+}
+
+fn microformats_image(base: &Url, doc: &Html) -> Option<String> {
+    for css in [
+        ".h-entry .u-featured",
+        ".u-featured",
+        ".h-entry .u-photo",
+        ".u-photo",
+    ] {
+        if let Some(u) = url_from_any_attr(doc, css) {
+            if let Some(abs) = absolutise(base, &u) {
+                return Some(abs);
+            }
+        }
+    }
+    None
+}
+
+fn oembed_thumbnail(base: &Url, doc: &Html) -> Option<String> {
+    let sel = Selector::parse(r#"link[rel~="alternate"]"#).ok()?;
+    // Find an oEmbed endpoint advertised in <head>.
+    let href = doc.select(&sel).find_map(|l| {
+        let t = l.value().attr("type")?.to_ascii_lowercase();
+        if t == "application/json+oembed" || t == "text/xml+oembed" {
+            l.value().attr("href").map(|h| h.to_string())
+        } else {
+            None
+        }
+    })?;
+    // Fetch JSON oEmbed only (keep simple). If XML, you could parse with quick-xml.
+    let oembed_url = base.join(&href).ok()?;
+    let body = crate::AGENT
+        .get(oembed_url.as_str())
+        .call()
+        .ok()?
+        .into_body()
+        .read_to_string()
+        .ok()?;
+    if href.contains("json+oembed") {
+        if let Ok(v) = serde_json::from_str::<Value>(&body) {
+            if let Some(u) = v
+                .get("thumbnail_url")
+                .and_then(Value::as_str)
+                .or_else(|| v.get("url").and_then(Value::as_str))
+            // photo type uses "url"
+            {
+                return absolutise(base, u);
+            }
+        }
+    }
+    None
+}
+
+fn amp_story_poster(base: &Url, doc: &Html) -> Option<String> {
+    let sel = Selector::parse("amp-story").ok()?;
+    let el = doc.select(&sel).next()?;
+    for attr in [
+        "poster-portrait-src",
+        "poster-landscape-src",
+        "poster-square-src",
+    ] {
+        if let Some(u) = el.value().attr(attr) {
+            if let Some(abs) = absolutise(base, u) {
+                return Some(abs);
+            }
+        }
+    }
+    None // poster-* are required for valid stories; return None if not present.
+}
+
+fn rel_image_src(base: &Url, doc: &Html) -> Option<String> {
+    let sel = Selector::parse(r#"link[rel="image_src"]"#).ok()?;
+    doc.select(&sel)
+        .filter_map(|l| l.value().attr("href"))
+        .filter_map(|u| absolutise(base, u))
+        .next() // last resort only; not a standard.
+}
+
+fn collect_primary_image(v: &Value, out: &mut Vec<String>) {
+    match v {
+        Value::Object(m) => {
+            // Only WebPage.primaryImageOfPage.
+            if is_type(m, "WebPage") {
+                if let Some(x) = m.get("primaryImageOfPage") {
+                    push_image_value(x, out);
+                }
+            }
+            if let Some(g) = m.get("@graph") {
+                collect_primary_image(g, out);
+            }
+            for (_k, vv) in m {
+                collect_primary_image(vv, out);
+            }
+        }
+        Value::Array(a) => {
+            for x in a {
+                collect_primary_image(x, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_generic_image(v: &Value, out: &mut Vec<String>) {
+    match v {
+        Value::Object(m) => {
+            if let Some(x) = m.get("image") {
+                // Thing/CreativeWork.image.
+                // If the ImageObject says representativeOfPage=true, prefer it by inserting first.
+                if let Some(img) = x.as_object() {
+                    if img.get("representativeOfPage").and_then(Value::as_bool) == Some(true) {
+                        let mut tmp = Vec::new();
+                        push_image_value(x, &mut tmp);
+                        out.splice(0..0, tmp); // stable prefer
+                    } else {
+                        push_image_value(x, out);
+                    }
+                } else {
+                    push_image_value(x, out);
+                }
+            }
+            if let Some(g) = m.get("@graph") {
+                collect_generic_image(g, out);
+            }
+            for (_k, vv) in m {
+                collect_generic_image(vv, out);
+            }
+        }
+        Value::Array(a) => {
+            for x in a {
+                collect_generic_image(x, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn push_image_value(x: &Value, out: &mut Vec<String>) {
+    match x {
+        Value::String(s) => push_clean(s, out),
+        Value::Object(m) => {
+            if let Some(Value::String(u)) = m.get("contentUrl").or_else(|| m.get("url")) {
+                push_clean(u, out);
+            }
+        }
+        Value::Array(a) => {
+            for v in a {
+                push_image_value(v, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn is_type(m: &serde_json::Map<String, Value>, t: &str) -> bool {
+    match m.get("@type") {
+        Some(Value::String(s)) => s == t,
+        Some(Value::Array(arr)) => arr.iter().any(|v| v.as_str() == Some(t)),
+        _ => false,
+    }
+}
+
+fn push_clean(s: &str, out: &mut Vec<String>) {
+    let u = s.trim();
+    if !u.is_empty() {
+        out.push(u.to_owned());
+    }
+}
+
+fn url_from_any_attr(doc: &Html, css: &str) -> Option<String> {
+    let sel = Selector::parse(css).ok()?;
+    for e in doc.select(&sel) {
+        for a in ["content", "src", "href", "data-src"] {
+            if let Some(v) = e.value().attr(a) {
+                let t = v.trim();
+                if !t.is_empty() {
+                    return Some(t.to_owned());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn absolutise(base: &Url, candidate: &str) -> Option<String> {
+    let c = candidate.trim();
+    // Avoid data URIs and fragments.
+    if c.starts_with("data:") || c.starts_with('#') {
+        return None;
+    }
+    // Already absolute http(s)?
+    if let Ok(u) = Url::parse(c) {
+        if u.scheme() == "http" || u.scheme() == "https" {
+            return Some(u.into());
+        }
+        return None;
+    }
+    base.join(c).ok().map(|u| u.into())
 }
