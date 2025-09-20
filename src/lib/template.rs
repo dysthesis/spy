@@ -57,3 +57,55 @@ impl Template {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    use crate::entry::{EntryTemplateContext, entry_strategy};
+
+    const KNOWN_FIELDS: &[&str] = &[
+        "title",
+        "site",
+        "author",
+        "authors",
+        "url",
+        "id",
+        "description",
+        "thumbnail",
+        "full_text",
+        "entry",
+    ];
+
+    fn unknown_field_strategy() -> proptest::strategy::BoxedStrategy<String> {
+        prop::string::string_regex("[a-z_]{5,16}")
+            .unwrap()
+            .prop_filter("field must be undefined", |s| {
+                !KNOWN_FIELDS.contains(&s.as_str())
+            })
+            .boxed()
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(1_000_000))]
+        #[test]
+        fn rendering_unknown_field_is_error(entry in entry_strategy(), field in unknown_field_strategy()) {
+            let template = Template::new(format!("{{{{ {field} }}}}"));
+            let result = template.render(&entry);
+            let failed = matches!(result, Err(Error::RenderFailure { .. }));
+            prop_assert!(failed);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn rendering_known_title_matches_context(entry in entry_strategy()) {
+            let output = Template::new("{{ title }}".to_string()).render(&entry).unwrap();
+            let context = EntryTemplateContext::new(&entry);
+            let json = serde_json::to_value(context).unwrap();
+            let expected = json.get("title").and_then(|v| v.as_str()).unwrap();
+            prop_assert_eq!(output, expected);
+        }
+    }
+}

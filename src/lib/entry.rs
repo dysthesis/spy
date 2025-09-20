@@ -10,6 +10,11 @@ use uuid::Uuid;
 
 use crate::AGENT;
 
+#[cfg(test)]
+use proptest::strategy::BoxedStrategy;
+#[cfg(test)]
+use proptest::{collection, prelude::*};
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 /// A single bookmark entry.
 pub struct Entry {
@@ -199,12 +204,12 @@ fn dublin_core_meta(doc: &Html) -> Option<String> {
     for m in doc.select(&sel) {
         let name = m.value().attr("name").unwrap_or_default();
         let lname = name.to_ascii_lowercase();
-        if lname == "dc.title" || lname == "dcterms.title" {
-            if let Some(val) = m.value().attr("content") {
-                let s = collapse_ws(val);
-                if !s.is_empty() {
-                    return Some(s);
-                }
+        if (lname == "dc.title" || lname == "dcterms.title")
+            && let Some(val) = m.value().attr("content")
+        {
+            let s = collapse_ws(val);
+            if !s.is_empty() {
+                return Some(s);
             }
         }
     }
@@ -299,20 +304,23 @@ fn schema_site_name(doc: &Html) -> Option<String> {
 fn collect_schema_site_names(v: &Value, out: &mut Vec<String>) {
     match v {
         Value::Object(m) => {
-            if let Some(Value::String(t)) = m.get("@type") {
-                if t.contains("WebSite") {
-                    if let Some(Value::String(n)) = m.get("name") {
-                        if !n.trim().is_empty() {
-                            out.push(n.trim().to_owned());
-                        }
-                    }
+            if let Some(Value::String(t)) = m.get("@type")
+                && t.contains("WebSite")
+                && let Some(Value::String(n)) = m.get("name")
+            {
+                let trimmed = n.trim();
+                if !trimmed.is_empty() {
+                    out.push(trimmed.to_owned());
                 }
             }
             if let Some(pub_obj) = m.get("publisher") {
-                if let Some(name) = pub_obj.get("name").and_then(|x| x.as_str()) {
-                    if !name.trim().is_empty() {
-                        out.push(name.trim().to_owned());
-                    }
+                if let Some(trimmed) = pub_obj
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                {
+                    out.push(trimmed.to_owned());
                 }
                 collect_schema_site_names(pub_obj, out);
             }
@@ -360,11 +368,7 @@ fn link_rel_author(doc: &Html) -> Option<HashSet<String>> {
             }
         }
     }
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 fn json_ld_authors(doc: &Html) -> Option<HashSet<String>> {
@@ -377,11 +381,7 @@ fn json_ld_authors(doc: &Html) -> Option<HashSet<String>> {
             collect_schema_authors(&val, &mut out);
         }
     }
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 fn microdata_authors(doc: &Html) -> Option<HashSet<String>> {
@@ -409,11 +409,7 @@ fn microdata_authors(doc: &Html) -> Option<HashSet<String>> {
         }
     }
 
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 fn rdfa_authors(doc: &Html) -> Option<HashSet<String>> {
@@ -435,11 +431,7 @@ fn rdfa_authors(doc: &Html) -> Option<HashSet<String>> {
         }
     }
 
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 fn microformats_authors(doc: &Html) -> Option<HashSet<String>> {
@@ -461,11 +453,7 @@ fn microformats_authors(doc: &Html) -> Option<HashSet<String>> {
             }
         }
     }
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 fn og_article_authors(doc: &Html) -> Option<HashSet<String>> {
@@ -481,23 +469,18 @@ fn dublin_core_creators(doc: &Html) -> Option<HashSet<String>> {
     let mut out = HashSet::new();
     let sel = Selector::parse("head meta").ok()?;
     for m in doc.select(&sel) {
-        if let Some(name) = m.value().attr("name") {
-            let lname = name.to_ascii_lowercase();
-            if lname == "dc.creator" || lname == "dcterms.creator" {
-                if let Some(val) = m.value().attr("content") {
-                    let s = collapse_ws(val);
-                    if !s.is_empty() {
-                        out.insert(s);
-                    }
-                }
+        if let Some(name) = m.value().attr("name")
+            && let lname = name.to_ascii_lowercase()
+            && (lname == "dc.creator" || lname == "dcterms.creator")
+            && let Some(val) = m.value().attr("content")
+        {
+            let s = collapse_ws(val);
+            if !s.is_empty() {
+                out.insert(s);
             }
         }
     }
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 fn address_authors(doc: &Html) -> Option<HashSet<String>> {
@@ -515,11 +498,7 @@ fn address_authors(doc: &Html) -> Option<HashSet<String>> {
             break;
         }
     }
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 fn first_attr_all(doc: &Html, css: &str, attr: &str) -> Option<HashSet<String>> {
@@ -533,11 +512,7 @@ fn first_attr_all(doc: &Html, css: &str, attr: &str) -> Option<HashSet<String>> 
             }
         }
     }
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 fn first_attr_all_in(
@@ -555,11 +530,7 @@ fn first_attr_all_in(
             }
         }
     }
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 fn first_text_in(el: &scraper::element_ref::ElementRef, css: &str) -> Option<String> {
@@ -660,14 +631,13 @@ fn looks_like_url(s: &str) -> bool {
 fn meta_description(doc: &Html) -> Option<String> {
     let sel = Selector::parse("head meta").ok()?;
     for m in doc.select(&sel) {
-        if let Some(name) = m.value().attr("name") {
-            if name.eq_ignore_ascii_case("description") {
-                if let Some(val) = m.value().attr("content") {
-                    let s = collapse_ws(val);
-                    if !s.is_empty() {
-                        return Some(s);
-                    }
-                }
+        if let Some(name) = m.value().attr("name")
+            && name.eq_ignore_ascii_case("description")
+            && let Some(val) = m.value().attr("content")
+        {
+            let s = collapse_ws(val);
+            if !s.is_empty() {
+                return Some(s);
             }
         }
     }
@@ -713,18 +683,17 @@ fn microformats_summary(doc: &Html) -> Option<String> {
 fn dublin_core_description(doc: &Html) -> Option<String> {
     let sel = Selector::parse("head meta").ok()?;
     for m in doc.select(&sel) {
-        if let Some(name) = m.value().attr("name") {
-            let lname = name.to_ascii_lowercase();
-            if lname == "dc.description"
-                || lname == "dcterms.description"
-                || lname == "dcterms.abstract"
-            {
-                if let Some(val) = m.value().attr("content") {
-                    let s = collapse_ws(val);
-                    if !s.is_empty() {
-                        return Some(s);
-                    }
-                }
+        if let Some(name) = m.value().attr("name")
+            && let lname = name.to_ascii_lowercase()
+            && matches!(
+                lname.as_str(),
+                "dc.description" | "dcterms.description" | "dcterms.abstract"
+            )
+            && let Some(val) = m.value().attr("content")
+        {
+            let s = collapse_ws(val);
+            if !s.is_empty() {
+                return Some(s);
             }
         }
     }
@@ -786,10 +755,10 @@ fn og_image(base: &Url, doc: &Html) -> Option<String> {
         r#"head meta[property="og:image:url"]"#,
         r#"head meta[property="og:image"]"#,
     ] {
-        if let Some(u) = first_attr(doc, css, "content") {
-            if let Some(abs) = absolutise(base, &u) {
-                return Some(abs);
-            }
+        if let Some(u) = first_attr(doc, css, "content")
+            && let Some(abs) = absolutise(base, &u)
+        {
+            return Some(abs);
         }
     }
     None
@@ -800,10 +769,10 @@ fn twitter_image(base: &Url, doc: &Html) -> Option<String> {
         r#"head meta[name="twitter:image"]"#,
         r#"head meta[name="twitter:image:src"]"#, // seen in the wild
     ] {
-        if let Some(u) = first_attr(doc, css, "content") {
-            if let Some(abs) = absolutise(base, &u) {
-                return Some(abs);
-            }
+        if let Some(u) = first_attr(doc, css, "content")
+            && let Some(abs) = absolutise(base, &u)
+        {
+            return Some(abs);
         }
     }
     None
@@ -844,10 +813,10 @@ fn schema_primary_image_microdata_rdfa(base: &Url, doc: &Html) -> Option<String>
         r#"[itemprop="primaryImageOfPage"]"#,
         r#"[property="schema:primaryImageOfPage"]"#,
     ] {
-        if let Some(u) = url_from_any_attr(doc, css) {
-            if let Some(abs) = absolutise(base, &u) {
-                return Some(abs);
-            }
+        if let Some(u) = url_from_any_attr(doc, css)
+            && let Some(abs) = absolutise(base, &u)
+        {
+            return Some(abs);
         }
     }
     None
@@ -855,10 +824,10 @@ fn schema_primary_image_microdata_rdfa(base: &Url, doc: &Html) -> Option<String>
 
 fn schema_image_microdata_rdfa(base: &Url, doc: &Html) -> Option<String> {
     for css in [r#"[itemprop="image"]"#, r#"[property="schema:image"]"#] {
-        if let Some(u) = url_from_any_attr(doc, css) {
-            if let Some(abs) = absolutise(base, &u) {
-                return Some(abs);
-            }
+        if let Some(u) = url_from_any_attr(doc, css)
+            && let Some(abs) = absolutise(base, &u)
+        {
+            return Some(abs);
         }
     }
     None
@@ -871,10 +840,10 @@ fn microformats_image(base: &Url, doc: &Html) -> Option<String> {
         ".h-entry .u-photo",
         ".u-photo",
     ] {
-        if let Some(u) = url_from_any_attr(doc, css) {
-            if let Some(abs) = absolutise(base, &u) {
-                return Some(abs);
-            }
+        if let Some(u) = url_from_any_attr(doc, css)
+            && let Some(abs) = absolutise(base, &u)
+        {
+            return Some(abs);
         }
     }
     None
@@ -900,17 +869,15 @@ fn oembed_thumbnail(base: &Url, doc: &Html) -> Option<String> {
         .into_body()
         .read_to_string()
         .ok()?;
-    if href.contains("json+oembed") {
-        if let Ok(v) = serde_json::from_str::<Value>(&body) {
-            if let Some(u) = v
-                .get("thumbnail_url")
-                .and_then(Value::as_str)
-                .or_else(|| v.get("url").and_then(Value::as_str))
-            // photo type uses "url"
-            {
-                return absolutise(base, u);
-            }
-        }
+    if href.contains("json+oembed")
+        && let Ok(v) = serde_json::from_str::<Value>(&body)
+        && let Some(u) = v
+            .get("thumbnail_url")
+            .and_then(Value::as_str)
+            .or_else(|| v.get("url").and_then(Value::as_str))
+    {
+        // photo type uses "url"
+        return absolutise(base, u);
     }
     None
 }
@@ -923,10 +890,10 @@ fn amp_story_poster(base: &Url, doc: &Html) -> Option<String> {
         "poster-landscape-src",
         "poster-square-src",
     ] {
-        if let Some(u) = el.value().attr(attr) {
-            if let Some(abs) = absolutise(base, u) {
-                return Some(abs);
-            }
+        if let Some(u) = el.value().attr(attr)
+            && let Some(abs) = absolutise(base, u)
+        {
+            return Some(abs);
         }
     }
     None // poster-* are required for valid stories; return None if not present.
@@ -944,10 +911,10 @@ fn collect_primary_image(v: &Value, out: &mut Vec<String>) {
     match v {
         Value::Object(m) => {
             // Only WebPage.primaryImageOfPage.
-            if is_type(m, "WebPage") {
-                if let Some(x) = m.get("primaryImageOfPage") {
-                    push_image_value(x, out);
-                }
+            if is_type(m, "WebPage")
+                && let Some(x) = m.get("primaryImageOfPage")
+            {
+                push_image_value(x, out);
             }
             if let Some(g) = m.get("@graph") {
                 collect_primary_image(g, out);
@@ -1130,6 +1097,160 @@ impl<'a> EntryTemplateContext<'a> {
         Self {
             entry,
             view: EntryView::from(entry),
+        }
+    }
+}
+
+#[cfg(test)]
+impl Entry {
+    pub fn from_parts(
+        id: Uuid,
+        url: Url,
+        page_title: String,
+        site_title: String,
+        authors: HashSet<String>,
+        full_text: String,
+        description: Option<String>,
+        thumbnail: Option<Url>,
+    ) -> Self {
+        Self {
+            id,
+            url,
+            page_title,
+            site_title,
+            authors,
+            full_text,
+            description,
+            thumbnail,
+        }
+    }
+}
+
+#[cfg(test)]
+prop_compose! {
+    fn arbitrary_url()
+        (host in prop::string::string_regex("[a-z]{3,10}").unwrap(),
+         slug in prop::string::string_regex("[a-z0-9]{3,16}").unwrap()) -> Url {
+        Url::parse(&format!("https://{host}.example.com/{slug}")).unwrap()
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn entry_strategy() -> BoxedStrategy<Entry> {
+    (
+        any::<[u8; 16]>(),
+        arbitrary_url(),
+        prop::string::string_regex("[A-Za-z0-9 ,.!?'-]{1,64}").unwrap(),
+        prop::string::string_regex("[A-Za-z0-9 ,.!?'-]{1,64}").unwrap(),
+        collection::vec(prop::string::string_regex("[A-Za-z]{3,16}").unwrap(), 0..=5),
+        collection::vec(prop::string::string_regex("[A-Za-z]{1,12}").unwrap(), 1..24),
+        prop::option::of(prop::string::string_regex("[A-Za-z0-9 ,.!?;:'-]{1,160}").unwrap()),
+        prop::option::of(arbitrary_url()),
+    )
+        .prop_map(
+            |(
+                id_bytes,
+                url,
+                page_title,
+                site_title,
+                authors_vec,
+                words,
+                description,
+                thumbnail,
+            )| {
+                let authors = authors_vec.into_iter().collect::<HashSet<_>>();
+                let full_text = words.join(" ");
+                Entry::from_parts(
+                    Uuid::from_bytes(id_bytes),
+                    url,
+                    page_title,
+                    site_title,
+                    authors,
+                    full_text,
+                    description,
+                    thumbnail,
+                )
+            },
+        )
+        .boxed()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value as JsonValue;
+
+    fn context_json(entry: &Entry) -> JsonValue {
+        serde_json::to_value(EntryTemplateContext::new(entry)).unwrap()
+    }
+
+    fn sorted_authors(entry: &Entry) -> Vec<String> {
+        let mut authors: Vec<String> = entry.authors.iter().cloned().collect();
+        authors.sort_unstable();
+        authors
+    }
+
+    proptest! {
+        #[test]
+        fn alias_fields_match_raw_view(entry in super::entry_strategy()) {
+            let json = context_json(&entry);
+            let title_alias = json.get("title").and_then(JsonValue::as_str).unwrap();
+            let raw_title = json
+                .get("entry").and_then(JsonValue::as_object).unwrap()
+                .get("page_title").and_then(JsonValue::as_str).unwrap();
+            prop_assert_eq!(title_alias, raw_title);
+
+            let site_alias = json.get("site").and_then(JsonValue::as_str).unwrap();
+            let raw_site = json
+                .get("entry").and_then(JsonValue::as_object).unwrap()
+                .get("site_title").and_then(JsonValue::as_str).unwrap();
+            prop_assert_eq!(site_alias, raw_site);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn authors_view_is_sorted(entry in super::entry_strategy()) {
+            let json = context_json(&entry);
+            let expected = sorted_authors(&entry);
+            if expected.is_empty() {
+                prop_assert!(json.get("authors").is_none());
+                prop_assert!(json.get("author").is_none());
+            } else {
+                let expected_primary = expected.first().cloned().unwrap();
+                let authors = json.get("authors").and_then(JsonValue::as_array).unwrap();
+                let actual: Vec<String> = authors
+                    .iter()
+                    .map(|v| v.as_str().unwrap().to_owned())
+                    .collect();
+                prop_assert_eq!(actual, expected.clone());
+
+                let primary = json.get("author").and_then(JsonValue::as_str).unwrap();
+                prop_assert_eq!(primary, expected_primary);
+            }
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn optional_fields_are_consistent(entry in super::entry_strategy()) {
+            let json = context_json(&entry);
+
+            match entry.description.as_ref() {
+                Some(desc) => {
+                    let value = json.get("description").and_then(JsonValue::as_str).unwrap();
+                    prop_assert_eq!(value, desc);
+                }
+                None => prop_assert!(json.get("description").is_none()),
+            }
+
+            match entry.thumbnail.as_ref() {
+                Some(url) => {
+                    let value = json.get("thumbnail").and_then(JsonValue::as_str).unwrap();
+                    prop_assert_eq!(value, url.as_str());
+                }
+                None => prop_assert!(json.get("thumbnail").is_none()),
+            }
         }
     }
 }
