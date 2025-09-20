@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt::Display};
 
 use serde_json::Value;
 
@@ -8,9 +8,9 @@ use thiserror::Error;
 use url::Url;
 use uuid::Uuid;
 
-use crate::{tag::Tag, AGENT};
+use crate::AGENT;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 /// A single bookmark entry.
 pub struct Entry {
     id: Uuid,
@@ -18,7 +18,6 @@ pub struct Entry {
     page_title: String,
     site_title: String,
     authors: HashSet<String>,
-    tags: HashSet<Tag>,
     full_text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
@@ -36,12 +35,7 @@ pub enum Error {
 
 impl Entry {
     /// Construct a new Entry from a Url, and optionally, a user-defined title.
-    pub fn new(
-        url: &Url,
-        page_title: Option<String>,
-        tags: Option<HashSet<Tag>>,
-    ) -> Result<Self, Box<Error>> {
-        let tags = tags.unwrap_or_default();
+    pub fn new(url: &Url, page_title: Option<String>) -> Result<Self, Box<Error>> {
         let body = AGENT
             .get(url.as_str())
             .call()
@@ -114,18 +108,17 @@ impl Entry {
             .or_else(|| microformats_summary(&doc))
             .or_else(|| dublin_core_description(&doc))
             .or_else(|| manifest_description(url, &doc));
-        let thumbnail = og_image(&url, &doc)
-            .or_else(|| twitter_image(&url, &doc))
-            .or_else(|| schema_primary_image_jsonld(&url, &doc))
-            .or_else(|| schema_primary_image_microdata_rdfa(&url, &doc))
-            .or_else(|| schema_image_jsonld(&url, &doc))
-            .or_else(|| schema_image_microdata_rdfa(&url, &doc))
-            .or_else(|| microformats_image(&url, &doc))
-            .or_else(|| oembed_thumbnail(&url, &doc))
-            .or_else(|| amp_story_poster(&url, &doc))
-            .or_else(|| rel_image_src(&url, &doc))
-            .map(|s| Url::parse(&s).ok())
-            .flatten();
+        let thumbnail = og_image(url, &doc)
+            .or_else(|| twitter_image(url, &doc))
+            .or_else(|| schema_primary_image_jsonld(url, &doc))
+            .or_else(|| schema_primary_image_microdata_rdfa(url, &doc))
+            .or_else(|| schema_image_jsonld(url, &doc))
+            .or_else(|| schema_image_microdata_rdfa(url, &doc))
+            .or_else(|| microformats_image(url, &doc))
+            .or_else(|| oembed_thumbnail(url, &doc))
+            .or_else(|| amp_story_poster(url, &doc))
+            .or_else(|| rel_image_src(url, &doc))
+            .and_then(|s| Url::parse(&s).ok());
 
         let id = Uuid::new_v4();
         Ok(Entry {
@@ -134,7 +127,6 @@ impl Entry {
             page_title,
             site_title,
             authors,
-            tags,
             description,
             full_text,
             thumbnail,
@@ -1068,4 +1060,76 @@ fn absolutise(base: &Url, candidate: &str) -> Option<String> {
         return None;
     }
     base.join(c).ok().map(|u| u.into())
+}
+
+impl Display for Entry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let view = EntryView::from(self);
+        let json = serde_json::to_string(&view).map_err(|_| std::fmt::Error)?;
+        f.write_str(&json)
+    }
+}
+#[derive(Serialize)]
+pub(crate) struct EntryView<'a> {
+    #[serde(rename = "title")]
+    title: &'a str,
+    #[serde(rename = "site")]
+    site: &'a str,
+
+    // Primary author if any (deterministic: lexicographically smallest).
+    #[serde(rename = "author", skip_serializing_if = "Option::is_none")]
+    author: Option<String>,
+
+    // Convenience: a comma-joined author list.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    authors: Vec<String>,
+
+    url: &'a str,
+    id: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<&'a str>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thumbnail: Option<&'a str>,
+
+    full_text: &'a str,
+}
+
+impl<'a> From<&'a Entry> for EntryView<'a> {
+    fn from(e: &'a Entry) -> Self {
+        // Authors: sort for determinism, then pick primary and build list.
+        let mut authors: Vec<&str> = e.authors.iter().map(String::as_str).collect();
+        authors.sort_unstable();
+        let author = authors.first().map(|s| (*s).to_string());
+        let authors_list = authors.iter().map(|s| (*s).to_string()).collect();
+
+        EntryView {
+            title: &e.page_title,
+            site: &e.site_title,
+            author,
+            authors: authors_list,
+            url: e.url.as_str(),
+            id: e.id.to_string(),
+            description: e.description.as_deref(),
+            thumbnail: e.thumbnail.as_ref().map(|u| u.as_str()),
+            full_text: &e.full_text,
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub(crate) struct EntryTemplateContext<'a> {
+    pub(crate) entry: &'a Entry,
+    #[serde(flatten)]
+    view: EntryView<'a>,
+}
+
+impl<'a> EntryTemplateContext<'a> {
+    pub(crate) fn new(entry: &'a Entry) -> Self {
+        Self {
+            entry,
+            view: EntryView::from(entry),
+        }
+    }
 }

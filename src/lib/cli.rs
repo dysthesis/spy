@@ -9,4 +9,8 @@ use url::Url;
 pub struct Cli {
     /// The bookmark to the URL.
     pub url: Url,
+
+    #[arg(short = 't', long)]
+    /// Optional template string. If none is passed in, it will be serialised as JSON.
+    pub template: Option<String>,
 }
