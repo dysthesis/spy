@@ -1,7 +1,16 @@
 use clap::Parser;
 use libspy::{cli::Cli, entry::Entry, template::Template};
 
+#[cfg(all(feature = "dhat-heap", feature = "dhat-ad-hoc"))]
+compile_error!("Enable only one of `dhat-heap` or `dhat-ad-hoc` at a time.");
+
 fn main() -> color_eyre::Result<()> {
+    #[cfg(feature = "dhat-heap")]
+    let _dhat_profiler = dhat::Profiler::new_heap();
+
+    #[cfg(all(feature = "dhat-ad-hoc", not(feature = "dhat-heap")))]
+    let _dhat_profiler = dhat::Profiler::new_ad_hoc();
+
     color_eyre::install()?;
 
     let cli = Cli::parse();

@@ -1,0 +1,12 @@
+Title: {{ title }}
+Primary Author: {% if author %}{{ author }}{% else %}n/a{% endif %}
+All Authors:{% for person in authors %}
+- {{ person }}{% else %}
+- n/a{% endfor %}
+Source: {{ site }} ({{ url }})
+Identifier: {{ id }}
+Description: {% if description %}{{ description }}{% else %}n/a{% endif %}
+Thumbnail: {% if thumbnail %}{{ thumbnail }}{% else %}n/a{% endif %}
+Excerpt:
+{{ full_text }}
+Entry Debug: {{ entry }}

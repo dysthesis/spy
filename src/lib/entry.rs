@@ -1045,14 +1045,14 @@ pub(crate) struct EntryView<'a> {
 
     // Primary author if any (deterministic: lexicographically smallest).
     #[serde(rename = "author", skip_serializing_if = "Option::is_none")]
-    author: Option<String>,
+    author: Option<&'a str>,
 
     // Convenience: a comma-joined author list.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    authors: Vec<String>,
+    authors: Vec<&'a str>,
 
     url: &'a str,
-    id: String,
+    id: &'a Uuid,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<&'a str>,
@@ -1068,8 +1068,8 @@ impl<'a> From<&'a Entry> for EntryView<'a> {
         // Authors: sort for determinism, then pick primary and build list.
         let mut authors: Vec<&str> = e.authors.iter().map(String::as_str).collect();
         authors.sort_unstable();
-        let author = authors.first().map(|s| (*s).to_string());
-        let authors_list = authors.iter().map(|s| (*s).to_string()).collect();
+        let author = authors.first().copied();
+        let authors_list = authors;
 
         EntryView {
             title: &e.page_title,
@@ -1077,7 +1077,7 @@ impl<'a> From<&'a Entry> for EntryView<'a> {
             author,
             authors: authors_list,
             url: e.url.as_str(),
-            id: e.id.to_string(),
+            id: &e.id,
             description: e.description.as_deref(),
             thumbnail: e.thumbnail.as_ref().map(|u| u.as_str()),
             full_text: &e.full_text,

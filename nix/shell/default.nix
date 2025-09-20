@@ -20,6 +20,14 @@
       bacon
       rust-analyzer
       kani
+
+      (python3.withPackages (
+        p: with p; [
+          numpy
+          scipy
+          scikit-learn
+        ]
+      ))
     ];
   };
 }

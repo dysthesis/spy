@@ -19,9 +19,16 @@ thiserror = "2.0.16"
 ureq = "3.1.2" 
 url = "2.5.7"
 uuid = { version = "1.18.1", features = ["serde", "v4"] }
+dhat = { version = "0.3", optional = true }
 
 [dev-dependencies]
 proptest = "1.7.0"
+criterion = "0.7.0"
+
+[features]
+default = []
+dhat-heap = ["dhat"]
+dhat-ad-hoc = ["dhat"]
 
 [lib]
 name = "libspy"
@@ -36,3 +43,7 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 strip = "debuginfo"
+
+[[bench]]
+name = "template_render"
+harness = false

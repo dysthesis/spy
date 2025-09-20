@@ -1,0 +1,14 @@
+{
+  "id": "00000000-0000-4000-8000-000000000001",
+  "url": "https://example.com/articles/criterion-benchmarking",
+  "page_title": "Benchmarking templating with Criterion",
+  "site_title": "Example Knowledge",
+  "authors": [
+    "Ada Lovelace",
+    "Grace Hopper",
+    "Donald Knuth"
+  ],
+  "full_text": "Criterion benchmarks help keep critical rendering paths fast. The document body here intentionally includes repeated sentences so the text extraction code mirrors a realistic payload. Repetition also ensures allocations are non-trivial. Criterion benchmarks help keep critical rendering paths fast. The document body here intentionally includes repeated sentences so the text extraction code mirrors a realistic payload. Repetition also ensures allocations are non-trivial. Criterion benchmarks help keep critical rendering paths fast. The document body here intentionally includes repeated sentences so the text extraction code mirrors a realistic payload. Repetition also ensures allocations are non-trivial.",
+  "description": "A synthetic entry used for exercising template rendering performance.",
+  "thumbnail": "https://cdn.example.com/thumbnails/criterion.png"
+}

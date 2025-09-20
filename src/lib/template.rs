@@ -58,6 +58,11 @@ impl Template {
     }
 }
 
+/// Build the MiniJinja value map used to render an entry.
+pub fn context_value(entry: &Entry) -> Value {
+    Value::from_serialize(EntryTemplateContext::new(entry))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

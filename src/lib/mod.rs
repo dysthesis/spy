@@ -3,6 +3,10 @@ use std::time::Duration;
 use once_cell::sync::Lazy;
 use ureq::Agent;
 
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static DHAT_ALLOC: dhat::Alloc = dhat::Alloc;
+
 pub mod cli;
 pub mod entry;
 pub mod tag;
