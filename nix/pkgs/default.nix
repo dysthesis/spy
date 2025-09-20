@@ -14,7 +14,7 @@ rec {
   kani = callPackage ./kani {
     inherit (inputs) rust-overlay;
   };
-  bm = callPackage ./bm {
+  spy = callPackage ./spy {
     inherit
       craneLib
       pkgs
@@ -22,5 +22,5 @@ rec {
       cargoArtifacts
       ;
   };
-  default = bm;
+  default = spy;
 }

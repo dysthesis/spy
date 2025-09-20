@@ -1,6 +1,6 @@
 {
   lib,
-  bm,
+  spy,
   craneLib,
   commonArgs,
   cargoArtifacts,
@@ -21,7 +21,7 @@ let
   };
 
   mkCheck = name: {
-    "bm-${name}" = import (./. + "/${name}.nix") defaultCheckArgs;
+    "spy-${name}" = import (./. + "/${name}.nix") defaultCheckArgs;
   };
 
   checkNames = [
@@ -33,6 +33,6 @@ let
     "nextest"
   ];
 
-  checks = fold (curr: acc: acc // mkCheck curr) { inherit bm; } checkNames;
+  checks = fold (curr: acc: acc // mkCheck curr) { inherit spy; } checkNames;
 in
 checks

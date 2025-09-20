@@ -122,24 +122,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2261d10cca569e4643e526d8dc2e62e433cc8aba21ab764233731f8d369bf394"
 
 [[package]]
-name = "bm"
-version = "0.1.0"
-dependencies = [
- "clap",
- "color-eyre",
- "once_cell",
- "readability",
- "regex",
- "scraper",
- "serde",
- "serde_json",
- "thiserror",
- "ureq",
- "url",
- "uuid",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1645,6 +1627,24 @@ checksum = "233504af464074f9d066d7b5416c5f9b894a5862a6506e306f7b816cdd6f1807"
 dependencies = [
  "libc",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "spy"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "color-eyre",
+ "once_cell",
+ "readability",
+ "regex",
+ "scraper",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "ureq",
+ "url",
+ "uuid",
 ]
 
 [[package]]

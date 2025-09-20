@@ -1,16 +1,14 @@
-use std::path::PathBuf;
-
 use clap::{Parser, Subcommand};
 use url::Url;
 #[derive(Parser, Debug)]
-#[command(version, name = "bm", about = "A command-line bookmark manager.")]
+#[command(
+    version,
+    name = "spy",
+    about = "Fetch information on a webpage on the command line"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub subcommand: Command,
-
-    /// Where to store bookmark data
-    #[arg(short, long)]
-    pub data_dir: Option<PathBuf>,
 }
 
 #[derive(Subcommand, Debug)]

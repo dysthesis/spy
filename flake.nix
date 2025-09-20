@@ -1,5 +1,5 @@
 {
-  description = "bm - a plaintext bookmark manager";
+  description = "spy - fetch information on a webpage on the command line";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -51,7 +51,7 @@
         in
         rec {
           checks = import ./nix/checks {
-            inherit (packages) bm;
+            inherit (packages) spy;
             inherit (pkgs) lib;
             inherit
               craneLib
@@ -77,7 +77,7 @@
 
           apps.default = {
             type = "app";
-            program = "${packages.bm}/bin/bm";
+            program = "${packages.spy}/bin/spy";
           };
         };
     });
